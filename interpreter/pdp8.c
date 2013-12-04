@@ -2,12 +2,14 @@
 Ali Homafar
 ah26482
 Section: 58345
+
+PDP429 - extended PDP8 interpreter
 */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include "objinput.h"
 
 void printVerbose();
 int memoryDump();
@@ -15,16 +17,20 @@ int memoryDump();
    Machine constants
 ***********************/
 
-#define MEMSIZE 4096
+#define MEMSIZE 65536
+#define NOPC 0x0000
 
 /**********************
    Masks
 ***********************/
-#define OPCODE_MASK 0xE00	/* Mask the opcode */
-#define INDIRECTION 0x100	/* Masks the indirection or group bit */
-#define MEMMASK 0x07F		/* Masks page address bits */
-#define HIGHFIVE 0xF80		/* Masks 5 high order bits */
-#define DEVICE 0x1F8		/* Masks the device for IOT */
+#define OPCODE_MASK 0xF000	/* Mask the opcode */
+#define INDIRECTION 0x0100	/* Masks the indirection or group bit */
+#define MEMMASK 0x00FF		/* Masks page address bits */
+#define HIGHEIGHT 0x0FF0	/* Masks 8 high order bits */
+#define DEVICE 0x03F8		/* Masks the device for IOT */
+#define REGSELECT 0x0C00	/* Masks register selection bits */
+
+#define ZCBIT 0x0100
 
 #define BIT_FOUR 0x080		/* Z/C or CLA */
 #define BIT_FIVE 0x040		/* CLL or SMA */
@@ -40,9 +46,17 @@ int memoryDump();
 Registers & Cycle Timer
 ***********************/
 
-static int A_r = 0; 		/* Accumulator */
-static unsigned L_r = 0;		/* Link Register */
-static unsigned pc = 5000;	/* program counter */
+static int REG_A = 0; 		/* Accumulator */
+static int REG_B = 0; 		/* Accumulator */
+static int REG_C = 0; 		/* Accumulator */
+static int REG_D = 0; 		/* Accumulator */
+static unsigned REG_L = 0;		/* Link Register */
+
+static unsigned pc = NOPC;	/* program counter */
+static unsigned SP = 0;		/* stack pointer */
+static unsigned SPL = 0;	/* stack pointer limit */
+static unsigned proc_word_status = 0;
+
 static long long cycles = 0;	/* cycles */
 static int memory[MEMSIZE];	/* memory */
 
@@ -57,10 +71,10 @@ int dump; 				/* Whether to dump simulated memory */
  *					   *
  ***********************/
 
-int parseOpcode(int opcode) /* Take an instruction. Returns 0-7 */
+int parseOpcode(int opcode) /* Take an instruction. Returns 0-15 */
 {
 	opcode = opcode & OPCODE_MASK;
-	opcode = opcode >> 9;
+	opcode = opcode >> 12;
 	return opcode;
 }
 
@@ -68,55 +82,180 @@ int parseOpcode(int opcode) /* Take an instruction. Returns 0-7 */
  *					   *
  ***********************/
 
+
+ int get2(void)
+{
+    int c1 = getc(input);
+    int c2 = getc(input);
+    // if (debug) fprintf(stderr, "read two bytes: 0x%X, 0x%X\n", c1, c2);
+    if ((c1 == EOF) || (c2 == EOF))
+        {
+            fprintf(stderr, "Premature EOF\n");
+            exit(1);
+        }
+    if (c1 & (~0xff)) fprintf(stderr, "Extra high order bits for 0x%X\n", c1);
+    if (c2 & (~0xff)) fprintf(stderr, "Extra high order bits for 0x%X\n", c2);
+    int n = ((c1 & 0xff) << 8) | (c2 & 0xff);
+    return(n);
+}
+
+
+ int Load_Binary_Object_File()
+{
+    int c1 = getc(input);
+    int c2 = getc(input);
+    int c3 = getc(input);
+    int c4 = getc(input);
+    // if (debug) fprintf(stderr, "read four bytes: 0x%X, 0x%X, 0x%X, 0x%X\n", c1, c2, c3, c4);
+
+    if ((c1 != 'O') || (c2 != 'B') || (c3 != 'J') || (c4 != 'G'))
+        {
+            fprintf(stdout, "First four bytes are not OBJG: ");
+            // fprintf(stdout, "%s", printrep(c1));
+            // fprintf(stdout, "%s", printrep(c2));
+            // fprintf(stdout, "%s", printrep(c3));
+            // fprintf(stdout, "%s", printrep(c4));
+            fprintf(stdout, " (%02X %02X %02X %02X)\n", c1, c2, c3, c4);
+
+            exit(1);
+        }
+
+    int pc = get2();
+    // printf("pc is %x", pc);
+
+    int n;
+    while ((n = getc(input)) != EOF)
+        {
+            // if (debug) fprintf(stderr, "Read next block of %d bytes\n", n);
+            n = n - 1;
+            int addr = get2(); n -= 2;
+            while (n > 0)
+                {
+                    int data = get2(); n -= 2;  
+                    // printf("DATA IS: %x\n", data);          
+                    memory[addr] = data;
+                    addr += 1;
+                }
+        }
+
+    return(pc);
+}
+
+
 int initializeMemory()
 {
-	unsigned int i;
-	unsigned int data;
-	char line[20];
-	
-	/* set all memory to 0 */
-	
+	 int i;
+	 // int data;
+	 // int blocksize;
+
+		/* set all memory to 0 */
 	for (i = 0; i < MEMSIZE; i++)
-		memory[i] = 0;
-	
-	while(fgets(line, 9, input) != NULL){
-		/* If entrypoint is read, retrieve its value and assign to pc */
-		if(line[0] == 'E' && line[1] == 'P' && pc == 5000){
-			sscanf(line, "%*s %x", &pc);
-		}
-		else if(line[0] == 'E'){
-			printf("Invalid data. Multiple entry points detected.\n");
-			exit(1);
-		}
+		 memory[i] = 0;
+
+		Load_Binary_Object_File();
+
+	// Token *magic = new_token();
+	// get_token(input, magic, 4);
+
+	// if(strstr(magic->string, "OBJG") == NULL){
+	// 	fprintf(stderr, "This is not an appropriate PDP429 file.\n");
+	// 	exit(1);
+	// }
 		
-		/* Otherwise, put data into temporary variables and assign the data at the memory address */
-		else{
-			/* Scan the line for input or bad data */
-			if(sscanf(line,"%x: %x",&i, &data) == 2){
-				/* The data is formatted correctly but is off size. */
-				if(i > 0xfff || data > 0xfff){
-					printf("Invalid data. Larger than word size. Address: %x Data: %x\n", i, data);
-					exit(1);
-				}
-				/* Assign data to memory */
-				memory[i] = data;
-			}
-			/* Check to see if misread line is just a new line. Ignore it if so */
-			else if(line[0] != '\n'){
-					printf("Badly formatted data input. Exitting on %s\n", line);
-					exit(1);
-				}
-		}
-	}
+	//  get_token(input, magic, 2);
 
-if(pc == 5000){
-	printf("No entry point discovered. Bad input. Exitting.\n");
-	exit(1);
-}
+	//  /* shift 8 bits and join the two bytes together to get our value */
+	//  pc |= magic->string[0];
+	//  pc *= 256;
+	//  pc |= magic->string[1];
+
+	//  printf("%x PC\n", pc);
+
+	//  /* There should always be a single byte to tell us the block size */
+	//  while(poke(input) != -1){
+	//  	get_token(input, magic, 1);
+	//  	blocksize = 0;
+	//  	blocksize |= magic->string[0];
+	//  	i = 0;
+
+	//  	printf("BLOCK SIZE? %x\n", blocksize);
+	//  	 after the blocksize we know we're getting a mem addr 
+	//  	get_token(input, magic, 2);
+	//  	i |= magic->string[0];
+	//  	i = i << 8;
+	//  	i |= magic->string[1];
+
+	//  	printf("MEM ADDR? %x%x\n", magic->string[0], magic->string[1]);
+	//  	// get_token(input, magic, blocksize - 3);
+
+	//  	int counter = 0;
+	//  	while(counter < blocksize - 3){
+	//  	get_token(input, magic, 2);
+	//  	data = 0;
+	// 	data |= magic->string[0];
+	// 	// printf("DATA INDEX 0 %x\n", data);
+	//  	data = data << 8;
+	//  	data |= magic->string[1];
+	//  	// printf("DATA INDEX 1 %x\n", data);
+	//  	counter += 2;
+	//  	memory[i] = data;
+	//  	i++;
+
+	//  	printf("DATA? %x%x\n", magic->string[0], magic->string[1]);
+	//  	}
+	 	
+	//  }
+
+
+
+
+	//  delete_token(magic);
+
+
+
+ 	
+// 	unsigned int data;
+// 	char line[20];
 	
 
+	
+// 	while(fgets(line, 9, input) != NULL){
+// 		/* If entrypoint is read, retrieve its value and assign to pc */
+// 		if(line[0] == 'E' && line[1] == 'P' && pc == NOPC){
+// 			sscanf(line, "%*s %x", &pc);
+// 		}
+// 		else if(line[0] == 'E'){
+// 			printf("Invalid data. Multiple entry points detected.\n");
+// 			exit(1);
+// 		}
+		
+// 		/* Otherwise, put data into temporary variables and assign the data at the memory address */
+// 		else{
+// 			/* Scan the line for input or bad data */
+// 			if(sscanf(line,"%x: %x",&i, &data) == 2){
+// 				/* The data is formatted correctly but is off size. */
+// 				if(i > 0xfff || data > 0xfff){
+// 					printf("Invalid data. Larger than word size. Address: %x Data: %x\n", i, data);
+// 					exit(1);
+// 				}
+// 				/* Assign data to memory */
+// 				memory[i] = data;
+// 			}
+// 			/* Check to see if misread line is just a new line. Ignore it if so */
+// 			else if(line[0] != '\n'){
+// 					printf("Badly formatted data input. Exitting on %s\n", line);
+// 					exit(1);
+// 				}
+// 		}
+// 	}
+
+// if(pc == NOPC){
+// 	printf("No entry point discovered. Bad input. Exitting.\n");
+// 	exit(1);
+// }
+	
 	return 0;
-}
+} 
 
 /* ***************************************************************** */
 /*                                                                   */
@@ -127,15 +266,15 @@ if(pc == 5000){
 /* function to retrieve an effective memory address */
 int retrieveMemAddress(int instr, int di, int zc) 
 {
-	int memAddress = 0x000;
+	int memAddress = 0x0000;
 	/* first determine the page of the memory address we seek */
 	/* Get the five high order bits from PC if ZC is set */
 	if(zc > 0)
 		memAddress |= pc;
 
-	memAddress &= HIGHFIVE; /* clear out the low 7 bits */
-	instr &= MEMMASK; /* retrieve the low 7 bits from our instruction */
-	memAddress |= instr; /* OR the high five bits to the low seven bits */
+	memAddress &= HIGHEIGHT; /* clear out the low 8 bits */
+	instr &= MEMMASK; /* retrieve the low 8 bits from our instruction */
+	memAddress |= instr; /* OR the high eight bits to the low eight bits */
 
 	if(di == 0)
 		return memAddress;
@@ -163,40 +302,40 @@ int decodeOperate(int instr, char *returnstr)
 	if(!group){
 		if(instr & BIT_FOUR){
 			strcat(instr_shorthand, "CLA ");
-			A_r = 0;
+			REG_A = 0;
 		}
 		if(instr & BIT_FIVE){
 			strcat(instr_shorthand, "CLL ");
-			L_r = 0;
+			REG_L = 0;
 		}
 		if(instr & BIT_SIX){
 			strcat(instr_shorthand, "CMA ");
-			A_r = ~A_r;
-			A_r &= 0xfff;
+			REG_A = ~REG_A;
+			REG_A &= 0xfff;
 		}
 		if(instr & BIT_SEVEN){
 			strcat(instr_shorthand, "CML ");
-			L_r = !L_r;
+			REG_L = !REG_L;
 		}
 		if(instr & BIT_ELEVEN){
 			strcat(instr_shorthand, "IAC ");
 			int overflowTrigger1 = 0;
 			int overflowTrigger2 = 0;
 
-			if(A_r <= 2047)
+			if(REG_A <= 2047)
 				overflowTrigger1 = 1;
 			 
-			 A_r += 1;
+			 REG_A += 1;
 
-			 if(A_r > 2047)
+			 if(REG_A > 2047)
 			 	overflowTrigger2 = 1;
 
 			 if(overflowTrigger1 == 1 && overflowTrigger2 == 1)
-			 	L_r = !L_r;
+			 	REG_L = !REG_L;
 
-			 if(A_r > 4095){
-			 	A_r -= 4096;
-			 	L_r = !L_r;
+			 if(REG_A > 4095){
+			 	REG_A -= 4096;
+			 	REG_L = !REG_L;
 			 }
 			
 		}
@@ -213,7 +352,7 @@ int decodeOperate(int instr, char *returnstr)
 		
 		if(right && left){
 			run = 0;
-			fprintf(stderr, "Illegally used RAL/RAR simultaneously. Exitting program.\n");
+			fprintf(stderr, "Illegally used RAL/RAR simultaneously. Exiting program.\n");
 		}
 
 		int tempbit = 0;
@@ -224,14 +363,14 @@ int decodeOperate(int instr, char *returnstr)
 				strcat(instr_shorthand, "RAR ");
 			
 			do{
-				tempbit = A_r & 0x001;
-				A_r = A_r >> 1;
-				if(L_r == 1)
-					A_r |= 0x800;
+				tempbit = REG_A & 0x001;
+				REG_A = REG_A >> 1;
+				if(REG_L == 1)
+					REG_A |= 0x800;
 
 				if(tempbit == 0)
-					L_r = 0;
-				else L_r = 1;
+					REG_L = 0;
+				else REG_L = 1;
 				two--;
 			}
 			while(two >= 0);
@@ -244,12 +383,12 @@ int decodeOperate(int instr, char *returnstr)
 				strcat(instr_shorthand, "RAL ");
 
 			do{
-				tempbit = A_r & 0x800;
-				A_r = A_r << 1;
-				A_r += L_r;
+				tempbit = REG_A & 0x800;
+				REG_A = REG_A << 1;
+				REG_A += REG_L;
 				if(tempbit == 0)
-					L_r = 0;
-				else L_r = 1;
+					REG_L = 0;
+				else REG_L = 1;
 				two--;
 			}
 			while(two >= 0);
@@ -281,16 +420,16 @@ That is, SMA skips on positive or zero, SZA skips on nonzero, and SNL skips if t
 		
 		if(instr & BIT_EIGHT){
 			strcat(instr_shorthand, "RSS ");
-			if(((A_r < 2048) && skipneg) || (A_r != 0 && skipzero) || (L_r == 0 && skiplink))
+			if(((REG_A < 2048) && skipneg) || (REG_A != 0 && skipzero) || (REG_L == 0 && skiplink))
 				incrementpc++;
 		}
 		else
-			if(((A_r > 2047) && skipneg) || (A_r == 0 && skipzero) || (L_r == 1 && skiplink))
+			if(((REG_A > 2047) && skipneg) || (REG_A == 0 && skipzero) || (REG_L == 1 && skiplink))
 				incrementpc++;
 
 		if(instr & BIT_FOUR){
 			strcat(instr_shorthand, "CLA ");
-			A_r = 0;
+			REG_A = 0;
 		}
 
 		if(instr & BIT_NINE)
@@ -336,9 +475,9 @@ int interpret() /* Runs the interpreter */
 		increment_pc_reminder = 0; 
 		
 		/*If memory referencing operation, get d/i z/c */
-		if(opcode <= 5){
+		if((opcode > 1 && opcode < 10) || opcode == 11 || opcode == 12){
 			di = instruction & INDIRECTION;
-			zc = instruction & BIT_FOUR;
+			zc = instruction & ZCBIT;
 			addr = retrieveMemAddress(instruction, di, zc);
 
 			/* if indirection, add one cycle for additional memory access */
@@ -346,25 +485,25 @@ int interpret() /* Runs the interpreter */
 			 	 cycles++;
 		}
 
-		if(opcode == 5 || opcode == 6 || opcode == 7)
-		 	cycles--;
-		 cycles += 2;
+		// if(opcode == 5 || opcode == 6 || opcode == 7)
+		 	// cycles--;
+		 // cycles += 2;
 		
 		/* Determine the operation to perform */
 		switch(opcode){
 
 			case 0: /* AND */
 			strcat(instr_shorthand, "AND ");
-			 A_r &= memory[addr];
+			 REG_A &= memory[addr];
 			break;
 	/***********************************************************************/
 			case 1: /* TAD */
 			strcat(instr_shorthand, "TAD ");
-			 A_r += memory[addr];
+			 REG_A += memory[addr];
 			/*If we exceed the word size, set register back down */			 
-			 if(A_r > 4095){
-			 	A_r -= 4096;
-			 	L_r = !L_r;
+			 if(REG_A > 4095){
+			 	REG_A -= 4096;
+			 	REG_L = !REG_L;
 			 }
 			break;
 	/***********************************************************************/
@@ -381,8 +520,8 @@ int interpret() /* Runs the interpreter */
 	/***********************************************************************/
 			case 3: /* DCA */
 			strcat(instr_shorthand, "DCA ");
-			memory[addr] = A_r;
-			A_r = 0;
+			memory[addr] = REG_A;
+			REG_A = 0;
 			break;
 	/***********************************************************************/
 			case 4: /* JMS  */
@@ -390,7 +529,8 @@ int interpret() /* Runs the interpreter */
 			if(di)
 				strcat(instr_shorthand, "I ");
 			printVerbose(instr_shorthand);
-//The address of the next location (program counter plus one) is stored at the effective address and the program counter is set to the effective address plus one.
+//The address of the next location (program counter plus one) is stored at the effective address and 
+			//the program counter is set to the effective address plus one.
 			memory[addr] = pc+1;
 			jumped++;
 			pc = addr+1;
@@ -411,12 +551,12 @@ int interpret() /* Runs the interpreter */
 			device = memory[pc] & DEVICE;
 			device = device >> 3;
 			if(device == 3){
-				A_r = getc(stdin);
-				A_r &= 0xfff;
+				REG_A = getc(stdin);
+				REG_A &= 0xfff;
 				strcat(instr_shorthand, "3 ");
 			}
 			else if(device == 4){
-				putchar(A_r & 0xff);
+				putchar(REG_A & 0xff);
 				strcat(instr_shorthand, "4 ");
 			}
 			/* If IOT to any device other than 3/4, stop running. */
@@ -452,14 +592,14 @@ int memoryDump()
 	if(dump){
 	int i;
 	printf("Exit data.\nRegisters:\n");
-	printf("A: %d\n", A_r);
-	printf("L: %d\n", L_r);
+	printf("A: %d\n", REG_A);
+	printf("L: %d\n", REG_L);
 	printf("pc: %d\n", pc);
 	printf("Time: %lld\n\n", cycles);
 	printf("%s\n", "Full contents of memory in hex:");
 
 	for (i = 0; i < MEMSIZE; i++)
-		printf("%03x %03x\n", i, memory[i]);
+		printf("%04x %04x\n", i, memory[i]);
 	}
 	return 0;
 }
@@ -497,7 +637,7 @@ void printVerbose(char *s)
 	 int a = strlen(s);
 	 s[a-1] = '\0';
 	 if(verbose)
-	fprintf(stderr, "Time %lld: PC=0x%03X instruction = 0x%03X (%s), rA = 0x%03X, rL = %d\n", cycles, pc, memory[pc], s, A_r, L_r);
+	fprintf(stderr, "Time %lld: PC=0x%03X instruction = 0x%03X (%s), rA = 0x%03X, rL = %d\n", cycles, pc, memory[pc], s, REG_A, REG_L);
 }
 
 int main(int argc, char **argv)
@@ -511,6 +651,10 @@ int main(int argc, char **argv)
             else
                 {
                     input = fopen(*argv,"r");
+
+                    if(dump)
+                    printf("Opening: %s\n", *argv);
+                    
                     if (input == NULL)
                         {
                             fprintf (stderr, "Can't open %s. Exit program.\n",*argv);
@@ -520,7 +664,7 @@ int main(int argc, char **argv)
                         {
                         	initializeMemory();
                             fclose(input);
-                            interpret();
+                            // interpret();
                         }
                 }
         }
