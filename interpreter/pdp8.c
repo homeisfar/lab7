@@ -24,11 +24,17 @@ int memoryDump();
    Masks
 ***********************/
 #define OPCODE_MASK 0xF000	/* Mask the opcode */
-#define INDIRECTION 0x0100	/* Masks the indirection or group bit */
+#define INDIRECTION 0x0200	/* Masks the indirection or group bit */
 #define MEMMASK 0x00FF		/* Masks page address bits */
-#define HIGHEIGHT 0x0FF0	/* Masks 8 high order bits */
+#define HIGHEIGHT 0xFF00	/* Masks 8 high order bits */
 #define DEVICE 0x03F8		/* Masks the device for IOT */
 #define REGSELECT 0x0C00	/* Masks register selection bits */
+#define FULLBITS 0xFFFF 	/* Masks all the bits in a word */
+#define REGTOREGSELECT 0x0E00	/* masks the subopcode for register-register ops */
+#define REG_I 0x01C0		/* Masks all the bits for R-R i */
+#define REG_J 0x0038		/* Masks all the bits for R-R j */
+#define REG_K 0x0007		/* Masks all the bits for R-R k */
+#define R_R_SUBCODE 0x0E00	/* Masks subopcode for R-R */
 
 #define ZCBIT 0x0100
 
@@ -42,17 +48,38 @@ int memoryDump();
 #define BIT_TEN 0x002		/* 0/1 or HLT */
 #define BIT_ELEVEN 0x001	/* IAC or 0 */
 
+#define BITSM 0x0200
+#define BITSZ 0x0100
+#define BITSNL 0x0080
+#define BITRSS 0x0040
+#define BITCL 0x0020
+#define BITCLL 0x0010
+#define BITCM 0x0008
+#define BITCML 0x0004
+#define BITDC 0x0002
+#define BITIC 0x0001
+
 /**********************
 Registers & Cycle Timer
 ***********************/
 
+static int REG[8]; 		/* Accumulator */
+char instr_longhand[200];
+/*
+A 	0
+B 	1
+C 	2
+D 	3
+PC 	4
+PSW 	5
+SP 	6
+SPL 7	
+*/
 static int REG_A = 0; 		/* Accumulator */
-static int REG_B = 0; 		/* Accumulator */
-static int REG_C = 0; 		/* Accumulator */
-static int REG_D = 0; 		/* Accumulator */
+// static int REG_C = 0; 		/* Accumulator */
+// static int REG_D = 0; 		/* Accumulator */
 static unsigned REG_L = 0;		/* Link Register */
 
-static unsigned pc = NOPC;	/* program counter */
 static unsigned SP = 0;		/* stack pointer */
 static unsigned SPL = 0;	/* stack pointer limit */
 static unsigned proc_word_status = 0;
@@ -121,7 +148,7 @@ int parseOpcode(int opcode) /* Take an instruction. Returns 0-15 */
         }
 
     int pc = get2();
-    // printf("pc is %x", pc);
+    // printf("REG[4] is %x", REG[4]);
 
     int n;
     while ((n = getc(input)) != EOF)
@@ -145,115 +172,11 @@ int parseOpcode(int opcode) /* Take an instruction. Returns 0-15 */
 int initializeMemory()
 {
 	 int i;
-	 // int data;
-	 // int blocksize;
-
 		/* set all memory to 0 */
 	for (i = 0; i < MEMSIZE; i++)
 		 memory[i] = 0;
 
-		Load_Binary_Object_File();
-
-	// Token *magic = new_token();
-	// get_token(input, magic, 4);
-
-	// if(strstr(magic->string, "OBJG") == NULL){
-	// 	fprintf(stderr, "This is not an appropriate PDP429 file.\n");
-	// 	exit(1);
-	// }
-		
-	//  get_token(input, magic, 2);
-
-	//  /* shift 8 bits and join the two bytes together to get our value */
-	//  pc |= magic->string[0];
-	//  pc *= 256;
-	//  pc |= magic->string[1];
-
-	//  printf("%x PC\n", pc);
-
-	//  /* There should always be a single byte to tell us the block size */
-	//  while(poke(input) != -1){
-	//  	get_token(input, magic, 1);
-	//  	blocksize = 0;
-	//  	blocksize |= magic->string[0];
-	//  	i = 0;
-
-	//  	printf("BLOCK SIZE? %x\n", blocksize);
-	//  	 after the blocksize we know we're getting a mem addr 
-	//  	get_token(input, magic, 2);
-	//  	i |= magic->string[0];
-	//  	i = i << 8;
-	//  	i |= magic->string[1];
-
-	//  	printf("MEM ADDR? %x%x\n", magic->string[0], magic->string[1]);
-	//  	// get_token(input, magic, blocksize - 3);
-
-	//  	int counter = 0;
-	//  	while(counter < blocksize - 3){
-	//  	get_token(input, magic, 2);
-	//  	data = 0;
-	// 	data |= magic->string[0];
-	// 	// printf("DATA INDEX 0 %x\n", data);
-	//  	data = data << 8;
-	//  	data |= magic->string[1];
-	//  	// printf("DATA INDEX 1 %x\n", data);
-	//  	counter += 2;
-	//  	memory[i] = data;
-	//  	i++;
-
-	//  	printf("DATA? %x%x\n", magic->string[0], magic->string[1]);
-	//  	}
-	 	
-	//  }
-
-
-
-
-	//  delete_token(magic);
-
-
-
- 	
-// 	unsigned int data;
-// 	char line[20];
-	
-
-	
-// 	while(fgets(line, 9, input) != NULL){
-// 		/* If entrypoint is read, retrieve its value and assign to pc */
-// 		if(line[0] == 'E' && line[1] == 'P' && pc == NOPC){
-// 			sscanf(line, "%*s %x", &pc);
-// 		}
-// 		else if(line[0] == 'E'){
-// 			printf("Invalid data. Multiple entry points detected.\n");
-// 			exit(1);
-// 		}
-		
-// 		/* Otherwise, put data into temporary variables and assign the data at the memory address */
-// 		else{
-// 			/* Scan the line for input or bad data */
-// 			if(sscanf(line,"%x: %x",&i, &data) == 2){
-// 				/* The data is formatted correctly but is off size. */
-// 				if(i > 0xfff || data > 0xfff){
-// 					printf("Invalid data. Larger than word size. Address: %x Data: %x\n", i, data);
-// 					exit(1);
-// 				}
-// 				/* Assign data to memory */
-// 				memory[i] = data;
-// 			}
-// 			/* Check to see if misread line is just a new line. Ignore it if so */
-// 			else if(line[0] != '\n'){
-// 					printf("Badly formatted data input. Exitting on %s\n", line);
-// 					exit(1);
-// 				}
-// 		}
-// 	}
-
-// if(pc == NOPC){
-// 	printf("No entry point discovered. Bad input. Exitting.\n");
-// 	exit(1);
-// }
-	
+		REG[4] = Load_Binary_Object_File();
 	return 0;
 } 
 
@@ -263,6 +186,15 @@ int initializeMemory()
 /* ***************************************************************** */
 
 
+
+void buildout(int reg, int instruction, int addr)
+{
+	if(instruction == 8){
+	strcat(instr_longhand, "M[%04X");	
+	}
+	
+}
+
 /* function to retrieve an effective memory address */
 int retrieveMemAddress(int instr, int di, int zc) 
 {
@@ -270,7 +202,7 @@ int retrieveMemAddress(int instr, int di, int zc)
 	/* first determine the page of the memory address we seek */
 	/* Get the five high order bits from PC if ZC is set */
 	if(zc > 0)
-		memAddress |= pc;
+		memAddress |= REG[4];
 
 	memAddress &= HIGHEIGHT; /* clear out the low 8 bits */
 	instr &= MEMMASK; /* retrieve the low 8 bits from our instruction */
@@ -287,165 +219,157 @@ int retrieveMemAddress(int instr, int di, int zc)
 /*                                                                   */
 /* ***************************************************************** */
 
-/* Decode all the microcoded options from the operate instruction */
-/* Perform those operations */
-int decodeOperate(int instr, char *returnstr)
+void push(int instr)
 {
-	int group = instr & INDIRECTION;
-	 char instr_shorthand[30];
+	memory[REG[6]] = instr;
+	REG[6]--;
+	if(REG[6] < REG[7])
+		// exit(1);
+		printf("OVERFLOW\n");
+}
+
+void pop(int instr)
+{
+
+	REG[6]++;
+	if(REG[6] == 0)
+		// exit(1);
+		printf("OVERFLOW\n");
+	memory[instr] = memory[REG[6]];
+}
+
+void retur()
+{
+	REG[6]++;
+	if(REG[6] == 0)
+		// exit(1);
+		printf("OVERFLOW\n");
+	REG[4] = memory[REG[6]];
+}
+
+int decodeSpecial(int instr, char *returnstr)
+{
+	int did_return = 0;
+	char instr_shorthand[40];
 	instr_shorthand[0] = '\0';
-	int incrementpc =0;
-
-	// printf("INSTRUCTION IS: %x", instr);
-
-	/***GROUP 0 OPERATIONS***********************************/
-	if(!group){
-		if(instr & BIT_FOUR){
-			strcat(instr_shorthand, "CLA ");
-			REG_A = 0;
-		}
-		if(instr & BIT_FIVE){
-			strcat(instr_shorthand, "CLL ");
-			REG_L = 0;
-		}
-		if(instr & BIT_SIX){
-			strcat(instr_shorthand, "CMA ");
-			REG_A = ~REG_A;
-			REG_A &= 0xfff;
-		}
-		if(instr & BIT_SEVEN){
-			strcat(instr_shorthand, "CML ");
-			REG_L = !REG_L;
-		}
-		if(instr & BIT_ELEVEN){
-			strcat(instr_shorthand, "IAC ");
-			int overflowTrigger1 = 0;
-			int overflowTrigger2 = 0;
-
-			if(REG_A <= 2047)
-				overflowTrigger1 = 1;
-			 
-			 REG_A += 1;
-
-			 if(REG_A > 2047)
-			 	overflowTrigger2 = 1;
-
-			 if(overflowTrigger1 == 1 && overflowTrigger2 == 1)
-			 	REG_L = !REG_L;
-
-			 if(REG_A > 4095){
-			 	REG_A -= 4096;
-			 	REG_L = !REG_L;
-			 }
-			
-		}
-
-
-		/* extra variables to determine early on if RAR and RAL have
-		illegally been both set. If they've both been set, perform the operation
-		but stop running the program. Print out error message. */
-		int right = instr & BIT_EIGHT;
-		int left = instr & BIT_NINE;
-		int two = instr & BIT_TEN;
-		two = !two;
-		two = !two;
-		
-		if(right && left){
-			run = 0;
-			fprintf(stderr, "Illegally used RAL/RAR simultaneously. Exiting program.\n");
-		}
-
-		int tempbit = 0;
-		if(right){
-			if(two)
-				strcat(instr_shorthand, "RTR ");
-			else
-				strcat(instr_shorthand, "RAR ");
-			
-			do{
-				tempbit = REG_A & 0x001;
-				REG_A = REG_A >> 1;
-				if(REG_L == 1)
-					REG_A |= 0x800;
-
-				if(tempbit == 0)
-					REG_L = 0;
-				else REG_L = 1;
-				two--;
-			}
-			while(two >= 0);
-		}
-
-		if(left){
-			if(two)
-				strcat(instr_shorthand, "RTL ");
-			else
-				strcat(instr_shorthand, "RAL ");
-
-			do{
-				tempbit = REG_A & 0x800;
-				REG_A = REG_A << 1;
-				REG_A += REG_L;
-				if(tempbit == 0)
-					REG_L = 0;
-				else REG_L = 1;
-				two--;
-			}
-			while(two >= 0);
-		}
+	if(instr == 0x0)
+	{
+		strcat(instr_shorthand, "NOP ");
 	}
 
-	/***GROUP 1 OPERATIONS***********************************/
-	else{
-		int skipzero = 0;
-		int skiplink = 0;
-		int skipneg = 0;
-/*Reverse Skip Sense. If this bit is one, the SMA, SZA, and SNL subinstructions will skip on the opposite condition. 
-That is, SMA skips on positive or zero, SZA skips on nonzero, and SNL skips if the Link is zero.*/
+	if(instr == 0x01)
+	{
+		strcat(instr_shorthand, "HLT ");
+		proc_word_status = proc_word_status & 0xfffe;
+		run = 0;
+		printVerbose(instr_shorthand);
+		memoryDump();
+		exit(0);
+	}
 
-		if(instr & BIT_FIVE){
-			strcat(instr_shorthand, "SMA ");
-			skipneg = 1;
-		}
+	if(instr == 0x02)
+	{
+		strcat(instr_shorthand, "RET ");
+		printVerbose(instr_shorthand);
+		did_return++;
+		retur();
+	}
+	strcpy(returnstr, instr_shorthand);
+	return did_return;
+}
 
-		if(instr & BIT_SIX){
-			strcat(instr_shorthand, "SZA ");
-			skipzero = 1;
-		}
+int decodeRegister(int instr, char *returnstr)
+{
+	int reg_selected = instr & REGSELECT;
+	reg_selected = reg_selected >> 10;
+	char instr_shorthand[40];
+	instr_shorthand[0] = '\0';
 
-		if(instr & BIT_SEVEN){
-			strcat(instr_shorthand, "SNL ");
-			skiplink = 1;
-		}
-		
-		if(instr & BIT_EIGHT){
-			strcat(instr_shorthand, "RSS ");
-			if(((REG_A < 2048) && skipneg) || (REG_A != 0 && skipzero) || (REG_L == 0 && skiplink))
-				incrementpc++;
-		}
-		else
-			if(((REG_A > 2047) && skipneg) || (REG_A == 0 && skipzero) || (REG_L == 1 && skiplink))
-				incrementpc++;
+	if(reg_selected == 0)
+	{
+		strcat(instr_shorthand, "A ");
+	}
+	else if(reg_selected == 1)
+	{
+		strcat(instr_shorthand, "B ");
+	}
+	else if(reg_selected == 2)
+	{
+		strcat(instr_shorthand, "C ");
+	}
+	else if(reg_selected == 3)
+	{
+		strcat(instr_shorthand, "D ");
+	}
 
-		if(instr & BIT_FOUR){
-			strcat(instr_shorthand, "CLA ");
-			REG_A = 0;
-		}
+	strcat(returnstr, instr_shorthand);
+	return reg_selected;
+}
 
-		if(instr & BIT_NINE)
-			strcat(instr_shorthand, "OSR ");
+/* used for when opcode == 14 -> register to register */
+int decodeRegister_Register(int instr, char *returnstr)
+{
+	int reg_selected = instr & REGTOREGSELECT;
+	reg_selected = reg_selected >> 9;
+	char instr_shorthand[40];
+	instr_shorthand[0] = '\0';
 
-		if(instr & BIT_TEN){
-			strcat(instr_shorthand, "HLT ");
-			run = 0;
-			printVerbose(instr_shorthand);
-			memoryDump();
-			exit(0);
-		}
+	if(reg_selected == 0)
+	{
+		strcat(instr_shorthand, "MOD ");
+	}
+	else if(reg_selected == 1)
+	{
+		strcat(instr_shorthand, "ADD ");
+	}
+	else if(reg_selected == 2)
+	{
+		strcat(instr_shorthand, "SUB ");
+	}
+	else if(reg_selected == 3)
+	{
+		strcat(instr_shorthand, "MUL ");
+	}
+	else if(reg_selected == 4)
+	{
+		strcat(instr_shorthand, "DIV ");
+	}
+	else if(reg_selected == 5)
+	{
+		strcat(instr_shorthand, "AND ");
+	}
+	else if(reg_selected == 6)
+	{
+		strcat(instr_shorthand, "OR ");
+		 // printf("I GOT INTO SUBLAND SOMEHOW?\n\n");
+	}
+	else if(reg_selected == 7)
+	{
+		strcat(instr_shorthand, "XOR ");
 	}
 
 	strcpy(returnstr, instr_shorthand);
-	return incrementpc;
+	return reg_selected;
+}
+
+int select_subop(int instr, int select)
+{
+
+	int reg_selected = 0;
+
+	if(select == 0){
+	reg_selected = instr & REG_I;
+	reg_selected = reg_selected >> 6;
+	}
+	if(select == 1){
+	reg_selected = instr & REG_J;
+	reg_selected = reg_selected >> 3;
+	}
+	if(select == 2){
+	reg_selected = instr & REG_K;
+	}
+
+	return reg_selected;
 }
 
 
@@ -454,24 +378,243 @@ That is, SMA skips on positive or zero, SZA skips on nonzero, and SNL skips if t
 /*                                                                   */
 /* ***************************************************************** */
 
+
+/* Decode all the microcoded options from the operate instruction */
+/* Perform those operations */
+int decodeOperate(int instr, char *returnstr)
+{
+	// int group = instr & INDIRECTION;
+
+	 char instr_shorthand[40];
+	instr_shorthand[0] = '\0';
+	int incrementpc =0;
+	int regSelect = decodeRegister(instr, instr_shorthand);
+
+	// printf("INSTRUCTION IS: %x", instr);
+
+
+/* 
+#define BITSM 0x0200
+#define BITSZ 0x0100
+#define BITSNL 0x0080
+#define BITRSS 0x0040
+#define BITCL 0x0020
+#define BITCLL 0x0010
+#define BITCM 0x0008
+#define BITCML 0x0004
+#define BITDC 0x0002
+#define BITIC 0x0001
+*/
+
+
+		int skipzero = 0;
+		int skiplink = 0;
+		int skipneg = 0;
+/*Reverse Skip Sense. If this bit is one, the SMA, SZA, and SNL subinstructions will skip on the opposite condition. 
+That is, SMA skips on positive or zero, SZA skips on nonzero, and SNL skips if the Link is zero.*/
+
+		if(instr & BITSM){
+			strcat(instr_shorthand, "SMA ");
+			skipneg = 1;
+		}
+
+		if(instr & BITSZ){
+			strcat(instr_shorthand, "SZA ");
+			skipzero = 1;
+		}
+
+		if(instr & BITSNL){
+			strcat(instr_shorthand, "SNL ");
+			skiplink = 1;
+		}
+		
+		if(instr & BITRSS){
+			strcat(instr_shorthand, "RSS ");
+			if(((REG_A < 32768) && skipneg) || (REG_A != 0 && skipzero) || (REG_L == 0 && skiplink))
+				incrementpc++;
+		}
+		else
+			if(((REG_A > 32767) && skipneg) || (REG_A == 0 && skipzero) || (REG_L == 1 && skiplink))
+				incrementpc++;
+
+		if(instr & BITCL){
+			strcat(instr_shorthand, "CLA ");
+			REG[regSelect] = 0;
+		}
+		if(instr & BITCLL){
+			strcat(instr_shorthand, "CLL ");
+			REG_L = 0;
+		}
+		if(instr & BITCM){
+			strcat(instr_shorthand, "CMA ");
+			REG[regSelect] = ~REG[regSelect];
+			REG[regSelect] &= 0xffff;
+		}
+
+		if(instr & BITCML){
+			strcat(instr_shorthand, "CML ");
+			REG_L = !REG_L;
+		}
+
+		if(instr & BITDC){
+			strcat(instr_shorthand, "DC ");
+			int overflowTrigger1 = 0;
+			int overflowTrigger2 = 0;
+
+			if(REG[regSelect] >= 32768)
+				overflowTrigger1 = 1;
+			 
+			 REG[regSelect] -= 1;
+
+			 	/* the value is now positive */
+			 if(REG[regSelect] < 32768)
+			 	overflowTrigger2 = 1;
+
+			 if(overflowTrigger1 == 1 && overflowTrigger2 == 1)
+			 	REG_L = !REG_L;
+
+			 if(REG[regSelect] < 0){
+			 	REG[regSelect] += 65536;
+			 	REG_L = !REG_L;
+			 }
+		}
+
+		if(instr & BITIC){
+			strcat(instr_shorthand, "IC ");
+			int overflowTrigger1 = 0;
+			int overflowTrigger2 = 0;
+
+			if(REG[regSelect] <= 32767)
+				overflowTrigger1 = 1;
+			 
+			 REG[regSelect] += 1;
+
+			 if(REG[regSelect] > 32767)
+			 	overflowTrigger2 = 1;
+
+			 if(overflowTrigger1 == 1 && overflowTrigger2 == 1)
+			 	REG_L = !REG_L;
+
+			 if(REG[regSelect] > 65535){
+			 	REG[regSelect] -= 65536;
+			 	REG_L = !REG_L;
+			 }
+			}
+
+
+
+
+	strcpy(returnstr, instr_shorthand);
+	return incrementpc;
+
+}
+
+
+void val_to_string(int value)
+{
+	char str[20];
+	sprintf(str, "0x%04X", value);
+	strcat(instr_longhand, str);
+}
+
+void reg_to_string(int value, int valueinvalue, int rev)
+{
+	char str[20];
+
+if(rev == 0){
+	if(value == 0)
+		strcat(instr_longhand, "A");
+	if(value == 1)
+		strcat(instr_longhand, "B");
+	if(value == 2)
+		strcat(instr_longhand, "C");
+	if(value == 3)
+		strcat(instr_longhand, "D");
+	if(value == 4)
+		strcat(instr_longhand, "PC");
+	if(value == 5)
+		strcat(instr_longhand, "PSW");
+	if(value == 6)
+		strcat(instr_longhand, "SP");
+	if(value == 7)
+		strcat(instr_longhand, "SPL");
+	if(value == 8)
+		strcat(instr_longhand, "L");
+	if(value == 9){
+		strcat(instr_longhand, "M[");
+		val_to_string(valueinvalue);
+		strcat(instr_longhand, "]");
+	}
+
+	if(value < 8){
+	strcat(instr_longhand, " -> ");
+	val_to_string(valueinvalue);	
+	}
+
+	if(value == 9){
+		strcat(instr_longhand, " -> ");
+		val_to_string(memory[valueinvalue]);
+	}
+}
+
+if(rev == 1){
+	if(value < 8){
+	val_to_string(valueinvalue);
+	strcat(instr_longhand, " -> ");
+	}
+
+	if(value == 0)
+		strcat(instr_longhand, "A");
+	if(value == 1)
+		strcat(instr_longhand, "B");
+	if(value == 2)
+		strcat(instr_longhand, "C");
+	if(value == 3)
+		strcat(instr_longhand, "D");
+	if(value == 4)
+		strcat(instr_longhand, "PC");
+	if(value == 5)
+		strcat(instr_longhand, "PSW");
+	if(value == 6)
+		strcat(instr_longhand, "SP");
+	if(value == 7)
+		strcat(instr_longhand, "SPL");
+	if(value == 8)
+		strcat(instr_longhand, "L");
+
+}
+	
+}
+
+/* ***************************************************************** */
+/*                                                                   */
+/*                                                                   */
+/* ***************************************************************** */
+
 int interpret() /* Runs the interpreter */
 {
-	int opcode = 0;			/* the value of the opcode */
-	int instruction = 0;	/* the  */
-	int addr = 0;			/* the effective address to operate on */
-	int di = 0;				/* direction bit */
-	int zc = 0;				/* page bit */
-	int device = 0;			/* Which device has been selected */
-	int increment_pc_reminder=0;	/* a number to increment the PC after certain operations */
-	run = 2020; /* arbitrary positive value */
-	char instr_shorthand[30];	/* A string to output the names of the instructions for verbose */
+	int opcode = 0;				/* the value of the opcode */
+	int instruction = 0;		/* the  */
+	int addr = 0;				/* the effective address to operate on */
+	int di = 0;					/* direction bit */
+	int zc = 0;					/* page bit */
+	int device = 0;				/* Which device has been selected */
+	int increment_pc_reminder = 0;	/* a number to increment the PC after certain operations */
+	run = 100;				 	/* arbitrary positive value */
+	char instr_shorthand[40];	/* A string to output the names of the instructions for verbose */
+	int subopcode = 0;
+	int subreg1 = 0;
+	int subreg2 = 0;
+	int subreg3 = 0;
 
-	while(run){
+	while(run--){
 		di = 0;
 		instr_shorthand[0] = '\0';
-		instruction = memory[pc];
+		instr_longhand[0] = '\0';
+		instruction = memory[REG[4]];
 		opcode = parseOpcode(instruction);			
 		int jumped = 0;
+		int regSelect = 0;
 		increment_pc_reminder = 0; 
 		
 		/*If memory referencing operation, get d/i z/c */
@@ -481,103 +624,321 @@ int interpret() /* Runs the interpreter */
 			addr = retrieveMemAddress(instruction, di, zc);
 
 			/* if indirection, add one cycle for additional memory access */
-			 if(di)
-			 	 cycles++;
+			 // if(di)
+			 // 	 cycles++;
 		}
 
-		// if(opcode == 5 || opcode == 6 || opcode == 7)
-		 	// cycles--;
-		 // cycles += 2;
-		
+		printf("PC IS: %x. EXECUTING: %x\n", REG[4], memory[REG[4]]);
+
 		/* Determine the operation to perform */
 		switch(opcode){
 
-			case 0: /* AND */
-			strcat(instr_shorthand, "AND ");
-			 REG_A &= memory[addr];
-			break;
-	/***********************************************************************/
-			case 1: /* TAD */
-			strcat(instr_shorthand, "TAD ");
-			 REG_A += memory[addr];
-			/*If we exceed the word size, set register back down */			 
-			 if(REG_A > 4095){
-			 	REG_A -= 4096;
-			 	REG_L = !REG_L;
-			 }
-			break;
-	/***********************************************************************/
-			case 2: /* ISZ */
-			strcat(instr_shorthand, "ISZ ");
-			memory[addr] += 1;
-			
-			if(memory[addr] > 4095)
-				memory[addr] = 0;
+			case 0: /* Special Instructions */
 
-			 if(memory[addr] == 0)
-			 	increment_pc_reminder++;
+			jumped+= decodeSpecial(memory[REG[4]], instr_shorthand);
+				// printVerbose(instr_shorthand);
+
+			// strcat(instr_shorthand, "AND ");
+			//  REG_A &= memory[addr];
 			break;
 	/***********************************************************************/
-			case 3: /* DCA */
-			strcat(instr_shorthand, "DCA ");
-			memory[addr] = REG_A;
-			REG_A = 0;
+			case 1: /* ADD */
+			strcat(instr_shorthand, "ADD");
+
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+			
+			// reg_to_string(regSelect);
+			// strcat(instr_longhand, " -> ");
+			// val_to_string(REG[regSelect]);
+			// strcat(instr_longhand, ", M[");
+			// val_to_string(addr);
+			// strcat(instr_longhand, "]");
+			// strcat(instr_longhand, " -> ");
+			// val_to_string(memory[addr]);
+			// strcat(instr_longhand, ", ");
+			
+			REG[regSelect] += memory[addr];
+			if(REG[regSelect] > 65535){
+				REG[regSelect] -= 65536;
+				// val_to_string(!REG_L);
+				// strcat(instr_longhand, " -> L, ");
+
+				REG_L = !REG_L;
+			}
+			// val_to_string(REG[regSelect]);
+			// strcat(instr_longhand, " -> ");
+			// reg_to_string(regSelect);
+
 			break;
 	/***********************************************************************/
-			case 4: /* JMS  */
-			strcat(instr_shorthand, "JMS ");
-			if(di)
-				strcat(instr_shorthand, "I ");
-			printVerbose(instr_shorthand);
-//The address of the next location (program counter plus one) is stored at the effective address and 
-			//the program counter is set to the effective address plus one.
-			memory[addr] = pc+1;
-			jumped++;
-			pc = addr+1;
+			case 2: /* SUB */
+			strcat(instr_shorthand, "SUB");
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+
+			REG[regSelect] = REG[regSelect] - memory[addr];
+			
+			if(REG[regSelect] < 0)
+			{
+				REG[regSelect] += 0xffff;
+				REG_L = !REG_L;
+			}
+			break;
+	/***********************************************************************/
+			case 3: /* MUL */
+			strcat(instr_shorthand, "MUL");
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+
+			REG[regSelect] *= memory[addr];
+
+			if(REG[regSelect] > 65535){
+				REG[regSelect] = REG[regSelect] & FULLBITS;
+				REG_L = !REG_L;
+			}
+			break;
+	/***********************************************************************/
+			case 4: /* DIV  */
+			strcat(instr_shorthand, "DIV");
+			
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+			if(memory[addr] == 0)
+				REG[regSelect] = 0;
+			else
+			REG[regSelect] /= memory[addr];
+
+
+			break;
+	/***********************************************************************/
+			case 5: /* AND */
+			strcat(instr_shorthand, "AND");
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+
+			// reg_to_string(regSelect);
+			// strcat(instr_longhand, " -> ");
+			// val_to_string(REG[regSelect]);
+			// strcat(instr_longhand, ", M[");
+			// val_to_string(addr);
+			// strcat(instr_longhand, "]");
+			// strcat(instr_longhand, " -> ");
+			// val_to_string(memory[addr]);
+			// strcat(instr_longhand, ", ");
+			
+
+			REG[regSelect] = REG[regSelect] & memory[addr];
+			break;
+	/***********************************************************************/
+			case 6: /* OR */
+			strcat(instr_shorthand, "OR");
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+			REG[regSelect] = REG[regSelect] | memory[addr];
+			break;
+	/***********************************************************************/
+			case 7: /* XOR */
+			strcat(instr_shorthand, "XOR");
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+			REG[regSelect] = REG[regSelect] ^ memory[addr];
+			break;
+	/***********************************************************************/
+	/***********************************************************************/
+			case 8: /* LD */
+			strcat(instr_shorthand, "LD");
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+
+			reg_to_string(9, addr, 0);
+			
+			REG[regSelect] = memory[addr];
+
+			strcat(instr_longhand, ", ");
+			val_to_string(memory[addr]);
+			strcat(instr_longhand, " -> ");
+			reg_to_string(regSelect, addr, 1);
+			
+
+			// printf("REG SELECTED !!! %x\n", regSelect);
+			// printf("ADDR IS:%x MEMORY AT THAT ADDR IS%x\n\n\n",addr, memory[addr]);
 			
 			break;
 	/***********************************************************************/
-			case 5: /* JMP */
-			strcat(instr_shorthand, "JMP ");
-			if(di)
-				strcat(instr_shorthand, "I ");
-			printVerbose(instr_shorthand);
-			jumped++;
-			 pc = addr;
+	/***********************************************************************/
+			case 9: /* ST */
+			strcat(instr_shorthand, "ST");
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+			memory[addr] = REG[regSelect];
 			break;
 	/***********************************************************************/
-			case 6: /* IOT */
-			strcat(instr_shorthand, "IOT ");
-			device = memory[pc] & DEVICE;
+	/***********************************************************************/
+			case 10: /* IOT */
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+			/* strcpy to clear out the register selection string */
+			strcpy(instr_shorthand, "IOT ");
+			device = memory[REG[4]] & DEVICE;
 			device = device >> 3;
 			if(device == 3){
-				REG_A = getc(stdin);
-				REG_A &= 0xfff;
+				REG[regSelect] = getc(stdin);
+				REG[regSelect] &= FULLBITS;
 				strcat(instr_shorthand, "3 ");
 			}
 			else if(device == 4){
-				putchar(REG_A & 0xff);
+				putchar(REG[regSelect] & 0xff);
 				strcat(instr_shorthand, "4 ");
 			}
 			/* If IOT to any device other than 3/4, stop running. */
 			else run = 0;
 			break;
 	/***********************************************************************/
-			case 7: /* operate */
-			increment_pc_reminder = decodeOperate(memory[pc], instr_shorthand);
+	/***********************************************************************/
+			case 11: /* ISZ JMP or CALL 1100*/
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+
+			if(regSelect == 0){
+				strcpy(instr_shorthand, "ISZ ");
+			memory[addr] += 1;
+			
+			if(memory[addr] > 65535)
+				memory[addr] = 0;
+
+			 if(memory[addr] == 0)
+			 	increment_pc_reminder++;
+			}
+
+			if(regSelect == 1){
+				strcpy(instr_shorthand, "JMP ");
+			if(di)
+				strcat(instr_shorthand, "I ");
+			printVerbose(instr_shorthand);
+			jumped++;
+			 REG[4] = addr;
+			}
+
+			if(regSelect == 2){
+
+				// printf("ZC IS: : :: :  : %x  ", addr);
+				strcpy(instr_shorthand, "CALL ");
+					if(di)
+				strcat(instr_shorthand, "I ");
+				push(REG[4] + 1);
+				printVerbose(instr_shorthand);
+				jumped++;
+				REG[4] = addr;
+			}
+
 			break;
+	/***********************************************************************/
+	/***********************************************************************/
+			case 12: /* PUSH / POP */
+			regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+
+			if(regSelect == 0){
+				strcpy(instr_shorthand, "PUSH ");
+				push(memory[REG[4]]);
+			}
+			if(regSelect == 1)
+				strcpy(instr_shorthand, "POP ");
+
+			pop(addr);
+
+			break;
+	/***********************************************************************/
+	/***********************************************************************/
+			case 13: /* NOTHING HAPPENS HERE */
+			break;
+	/***********************************************************************/
+	/***********************************************************************/
+			case 14: /* REGISTER TO REGISTER 1110 */
+			subopcode = decodeRegister_Register(memory[REG[4]], instr_shorthand);
+			subreg1 = select_subop(memory[REG[4]], 0);
+			subreg2 = select_subop(memory[REG[4]], 1);
+			subreg3 = select_subop(memory[REG[4]], 2);
+
+/*1110.000	 MOD	 Reg[j] % Reg[k] -> Reg[i]
+1110.001	 ADD	 Reg[j] + Reg[k] -> Reg[i]
+1110.010	 SUB	 Reg[j] - Reg[k] -> Reg[i]
+1110.011	 MUL	 Reg[j] * Reg[k] -> Reg[i]
+1110.100	 DIV	 Reg[j] / Reg[k] -> Reg[i]
+1110.101	 AND	 Reg[j] & Reg[k] -> Reg[i]
+1110.110	 OR	 Reg[j] | Reg[k] -> Reg[i]
+1110.111	 XOR	 Reg[j] ^ Reg[k] -> Reg[i]*/
+
+			if(subopcode == 0){
+				if(REG[subreg3] == 0)
+					REG[subreg1] = 0;
+				else
+					REG[subreg1] = REG[subreg2] % REG[subreg3];
+			}
+			if(subopcode == 1){
+				REG[subreg1] = REG[subreg2] + REG[subreg3];
+			}
+			if(subopcode == 2){
+				REG[subreg1] = REG[subreg2] - REG[subreg3];
+			}
+			if(subopcode == 3){
+				REG[subreg1] = REG[subreg2] * REG[subreg3];
+				REG[subreg1] &= FULLBITS;
+			}
+			if(subopcode == 4){
+				if(REG[subreg3] == 0)
+					REG[subreg1] = 0;
+				else
+				REG[subreg1] = REG[subreg2] / REG[subreg3];
+			}
+			if(subopcode == 5){
+				REG[subreg1] = REG[subreg2] & REG[subreg3];
+
+			// reg_to_string(regSelect);
+			// strcat(instr_longhand, " -> ");
+			// val_to_string(REG[regSelect]);
+			// strcat(instr_longhand, ", M[");
+			// val_to_string(addr);
+			// strcat(instr_longhand, "]");
+			// strcat(instr_longhand, " -> ");
+			// val_to_string(memory[addr]);
+			// strcat(instr_longhand, ", ");
+			
+
+
+
+			}
+			if(subopcode == 6){
+				// printf("THIS%x THAT%x AND THE OTHER%x\n",subreg1, REG[subreg2], subreg3);
+				REG[subreg1] = REG[subreg2] | REG[subreg3];
+			}
+			if(subopcode == 7){
+				REG[subreg1] = REG[subreg2] ^ REG[subreg3];
+			}
+
+			if(REG[subreg1] > 65535){
+				REG[subreg1] -= 65536;
+				REG_L = ~REG_L;
+			}
+
+			if(REG[subreg1] < 0){
+				REG[subreg2] += 65536;
+				REG_L = ~REG_L;
+			}
+			break;
+	/***********************************************************************/
+	/***********************************************************************/
+			case 15: /* operate */
+			strcat(instr_shorthand, "OPERATE ");
+
+			increment_pc_reminder = decodeOperate(memory[REG[4]], instr_shorthand);
+			// regSelect = decodeRegister(memory[REG[4]], instr_shorthand);
+			// REG[regSelect] = REG[regSelect] ^ memory[addr];
+			break;
+	/***********************************************************************/
 			
 		} /* End switch case */
 			
+			cycles++;
 			if(!jumped){
 				if(di)
 				strcat(instr_shorthand, "I ");
 			printVerbose(instr_shorthand);
-			pc++;
-			if(pc > 4095)
-				pc = 0;
-			pc+=increment_pc_reminder;
+			REG[4]++;
+			if(REG[4] > 65535)
+				REG[4] = 0;
+			REG[4]+=increment_pc_reminder;
 		}
+
 	}
 	return 0;
 }
@@ -594,7 +955,7 @@ int memoryDump()
 	printf("Exit data.\nRegisters:\n");
 	printf("A: %d\n", REG_A);
 	printf("L: %d\n", REG_L);
-	printf("pc: %d\n", pc);
+	printf("REG[4]: %d\n", REG[4]);
 	printf("Time: %lld\n\n", cycles);
 	printf("%s\n", "Full contents of memory in hex:");
 
@@ -636,8 +997,15 @@ void printVerbose(char *s)
 {
 	 int a = strlen(s);
 	 s[a-1] = '\0';
-	 if(verbose)
-	fprintf(stderr, "Time %lld: PC=0x%03X instruction = 0x%03X (%s), rA = 0x%03X, rL = %d\n", cycles, pc, memory[pc], s, REG_A, REG_L);
+	 if(verbose){
+	// fprintf(stderr, "Time %lld: PC=0x%03X instruction = 0x%03X (%s), rA = 0x%03X, rL = %d\n", cycles, REG[4], memory[REG[4]], s, REG_A, REG_L);
+            fprintf(stderr, "Time %3lld: PC=0x%04X instruction = 0x%04X (%s)",
+                    cycles, REG[4], memory[REG[4]], s);
+            // char *regs = ...;
+            // if (regs != NULL)
+                fprintf(stderr, ": %s", instr_longhand);
+            fprintf(stderr, "\n");
+        }
 }
 
 int main(int argc, char **argv)
@@ -664,7 +1032,7 @@ int main(int argc, char **argv)
                         {
                         	initializeMemory();
                             fclose(input);
-                            // interpret();
+                             interpret();
                         }
                 }
         }
